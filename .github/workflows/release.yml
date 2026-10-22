@@ -58,7 +58,7 @@ jobs:
       matrix:
         include:
           - { os: ubuntu-latest, archive: chatgpt-local-api-linux-x64.tar.gz }
-          - { os: macos-13, archive: chatgpt-local-api-darwin-x64.tar.gz }
+          - { os: macos-15-intel, archive: chatgpt-local-api-darwin-x64.tar.gz }
           - { os: macos-latest, archive: chatgpt-local-api-darwin-arm64.tar.gz }
           - { os: windows-latest, archive: chatgpt-local-api-windows-x64.zip }
           - { os: windows-latest, archive: chatgpt-local-api-node.zip, node: true }
