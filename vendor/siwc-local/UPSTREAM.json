@@ -1,0 +1,8 @@
+{
+  "repo": "https://github.com/openai/sign-in-with-chatgpt-devkit",
+  "commit": "f723814abdccec135b519c451fb6e1992ee5e933",
+  "commitDate": "2026-09-29",
+  "subject": "Remove duplicate README button and composer caption",
+  "patched": true,
+  "note": "Cópia anterior ao sistema de sync: build do commit-base com as extensões locais (ferramentas, imagens, reasoning, promptCacheKey) aplicadas à mão em dist/."
+}

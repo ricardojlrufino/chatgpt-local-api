@@ -1,0 +1,33 @@
+{
+  "name": "chatgpt-local-api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "API local OpenAI/Ollama-compatible que usa a sua conta ChatGPT (Sign in with ChatGPT)",
+  "type": "module",
+  "bin": {
+    "chatgpt-local-api": "dist/server.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/",
+    "start": "npm run build && node dist/server.js",
+    "login": "npm run build && node dist/server.js login",
+    "sync-siwc": "node scripts/sync-siwc.mjs",
+    "build:bin": "bun build --compile --minify src/server.ts --outfile dist/chatgpt-local-api",
+    "package": "bun scripts/package.mjs",
+    "package:node": "node scripts/package-node.mjs",
+    "sync-siwc:check": "node scripts/sync-siwc.mjs --check"
+  },
+  "dependencies": {
+    "@siwc/local": "file:./vendor/siwc-local"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.9.3"
+  }
+}

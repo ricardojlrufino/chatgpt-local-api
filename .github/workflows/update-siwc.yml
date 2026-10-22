@@ -1,0 +1,71 @@
+name: Atualizar siwc-local
+
+# Procura commits novos em https://github.com/openai/sign-in-with-chatgpt-devkit, recompila o
+# pacote packages/local com as nossas extensões (patches/siwc-local-extensions.patch) e abre um
+# Pull Request. Nunca faz merge sozinho: o código vendorizado trata de credenciais, então a
+# mudança passa por revisão e pelos testes abaixo.
+on:
+  schedule:
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Sincronizar com o upstream
+        run: |
+          old=$(jq -r '.commit' vendor/siwc-local/UPSTREAM.json 2>/dev/null || echo "")
+          node scripts/sync-siwc.mjs
+          new=$(jq -r '.commit' vendor/siwc-local/UPSTREAM.json)
+          echo "OLD_COMMIT=$old" >> "$GITHUB_ENV"
+          echo "NEW_COMMIT=$new" >> "$GITHUB_ENV"
+          if [ "$old" = "$new" ]; then echo "Já está atualizado ($new)."; fi
+
+      - name: Verificar compatibilidade
+        if: env.OLD_COMMIT != env.NEW_COMMIT
+        run: |
+          rm -f bun.lock
+          bun install
+          bunx tsc --noEmit
+          node build.mjs
+          node --test test/
+          CHATGPT_API_DATA_DIR="$RUNNER_TEMP/data" CHATGPT_API_NO_OPEN=1 CHATGPT_API_PORT=8788 node dist/server.js &
+          for _ in $(seq 1 20); do curl -fs http://127.0.0.1:8788/health && break; sleep 1; done
+          curl -fs http://127.0.0.1:8788/v1/status
+          kill %1
+
+      - name: Abrir Pull Request
+        if: env.OLD_COMMIT != env.NEW_COMMIT
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          branch=chore/update-siwc
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$branch"
+          git add vendor/siwc-local bun.lock
+          git commit -m "chore: atualiza siwc-local para ${NEW_COMMIT:0:7}"
+          git push --force origin "$branch"
+          compare="https://github.com/openai/sign-in-with-chatgpt-devkit/compare/${OLD_COMMIT}...${NEW_COMMIT}"
+          body="Atualização automática do \`vendor/siwc-local\` (upstream \`${OLD_COMMIT:0:7}\` -> \`${NEW_COMMIT:0:7}\`).
+
+          Mudanças no upstream: ${compare}
+
+          O que revisar: o diff de \`vendor/siwc-local/dist\` (o código lida com tokens do ChatGPT) e as dependências em \`vendor/siwc-local/package.json\`. As extensões locais (ferramentas, imagens, reasoning) foram reaplicadas pelo patch; typecheck, build, testes e subida do servidor passaram."
+          if [ -z "$(gh pr list --head "$branch" --json number --jq '.[0].number')" ]; then
+            gh pr create --head "$branch" --base "${{ github.event.repository.default_branch }}" \
+              --title "chore: atualiza siwc-local para ${NEW_COMMIT:0:7}" --body "$body"
+          else
+            echo "PR já existe; branch atualizada."
+          fi

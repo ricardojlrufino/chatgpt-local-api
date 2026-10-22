@@ -1,0 +1,4 @@
+node_modules
+/dist
+# o .gitignore da raiz ignora qualquer "dist"; o SDK vendorizado precisa ser versionado
+!vendor/siwc-local/dist

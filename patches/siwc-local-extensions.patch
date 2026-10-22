@@ -1,0 +1,139 @@
+diff --git a/packages/local/src/index.ts b/packages/local/src/index.ts
+index 24301e6..f5aef05 100644
+--- a/packages/local/src/index.ts
++++ b/packages/local/src/index.ts
+@@ -9,7 +9,7 @@ import { ConnectionStore } from "./storage.js";
+ import type { ChatGPTClient, ChatGPTConfig, LoginProfile, PendingRegistration, SessionState, StoredConnection, StoredProfile, StoredState } from "./types.js";
+ 
+ export { ChatGPTError } from "./errors.js";
+-export type { ChatGPTClient, ChatGPTConfig, ChatGPTModel, CredentialEncryption, LoginProfile, ResponseInputMessage, SessionError, SessionIdentity, SessionState, SignInOptions, StreamResponseOptions } from "./types.js";
++export type { ChatGPTClient, ChatGPTConfig, ChatGPTModel, CredentialEncryption, LoginProfile, ResponseInputItem, ResponseInputMessage, ResponseUsage, SessionError, SessionIdentity, SessionState, SignInOptions, StreamResponseOptions, StreamResponseResult } from "./types.js";
+ export const CHATGPT_USAGE_URL = "https://chatgpt.com/settings/usage";
+ 
+ const SHARING_SCOPE = "chatgpt.tokens.use.direct";
+diff --git a/packages/local/src/responses.ts b/packages/local/src/responses.ts
+index dd9f6f6..de8c91c 100644
+--- a/packages/local/src/responses.ts
++++ b/packages/local/src/responses.ts
+@@ -1,16 +1,18 @@
+ import OpenAI from "openai";
+ import { apiError, ChatGPTError, isObject } from "./errors.js";
+-import type { StreamResponseOptions } from "./types.js";
++import type { ResponseUsage, StreamResponseOptions, StreamResponseResult } from "./types.js";
+ 
+ export async function streamResponse(
+   accessToken: string,
+   options: StreamResponseOptions,
+   signal: AbortSignal,
+-): Promise<{ text: string }> {
++): Promise<StreamResponseResult> {
+   const input = typeof options.input === "string" ? [{ role: "user" as const, content: options.input }] : options.input;
+-  if (!Array.isArray(input) || input.some((message) =>
+-    !isObject(message) || !["user", "assistant", "developer"].includes(String(message.role)) || typeof message.content !== "string"
+-  )) {
++  if (!Array.isArray(input) || (options.structuredInput
++    ? input.some((item) => !isObject(item))
++    : input.some((message) =>
++      !isObject(message) || !["user", "assistant", "developer"].includes(String(message.role)) || typeof message.content !== "string"
++    ))) {
+     throw new ChatGPTError("invalid_request", "Use text messages with user, assistant, or developer roles. Put system guidance in instructions.");
+   }
+ 
+@@ -40,8 +42,11 @@ export async function streamResponse(
+   try {
+     const result = await client.responses.create({
+       model: options.model,
+-      input: input.map((message) => ({ role: message.role, content: message.content })),
++      input: (options.structuredInput ? input : input.map((message) => ({ role: message.role, content: message.content }))) as never,
+       ...(options.instructions !== undefined ? { instructions: options.instructions } : {}),
++      ...(options.tools?.length ? { tools: options.tools as never } : {}),
++      ...(options.reasoning ? { reasoning: options.reasoning as never } : {}),
++      ...(options.promptCacheKey ? { prompt_cache_key: options.promptCacheKey } : {}),
+       store: false,
+       stream: true,
+     }, { signal: requestSignal, headers: { accept: "text/event-stream" } }).withResponse();
+@@ -56,6 +61,8 @@ export async function streamResponse(
+ 
+     let completed = false;
+     let text = "";
++    const output: Record<string, unknown>[] = [];
++    let usage: ResponseUsage | undefined;
+     for await (const event of result.data) {
+       requestSignal.throwIfAborted();
+       if (!isObject(event)) continue;
+@@ -68,15 +75,24 @@ export async function streamResponse(
+         throw apiError(detail, response.status, result.request_id);
+       } else if (event.type === "response.incomplete") {
+         throw new ChatGPTError("response_incomplete", "ChatGPT stopped before completing the response. You can keep the partial text or try again.", true);
++      } else if (event.type === "response.output_item.done" && isObject(event.item)) {
++        output.push(event.item);
+       } else if (event.type === "response.completed") {
+         completed = true;
++        const raw = isObject(event.response) && isObject(event.response.usage) ? event.response.usage : undefined;
++        if (raw) {
++          usage = {
++            ...(typeof raw.input_tokens === "number" ? { inputTokens: raw.input_tokens } : {}),
++            ...(typeof raw.output_tokens === "number" ? { outputTokens: raw.output_tokens } : {}),
++          };
++        }
+         break;
+       }
+     }
+     // The SDK may finish iteration on an aborted connection without throwing.
+     requestSignal.throwIfAborted();
+     if (!completed) throw new ChatGPTError("stream_interrupted", "The response ended before completion. You can keep the partial text or try again.", true);
+-    return { text };
++    return { text, output, ...(usage ? { usage } : {}) };
+   } catch (error) {
+     if (signal.aborted) throw new ChatGPTError("cancelled", "The response was cancelled.");
+     if (error instanceof ChatGPTError) throw error;
+diff --git a/packages/local/src/types.ts b/packages/local/src/types.ts
+index e80f3d2..25778ee 100644
+--- a/packages/local/src/types.ts
++++ b/packages/local/src/types.ts
+@@ -72,14 +72,35 @@ export interface ResponseInputMessage {
+   content: string;
+ }
+ 
++/** Raw Responses API input item (message with content parts, function_call, function_call_output, ...). */
++export type ResponseInputItem = Record<string, unknown>;
++
++export interface ResponseUsage {
++  inputTokens?: number;
++  outputTokens?: number;
++}
++
+ export interface StreamResponseOptions {
+   model: string;
+-  input: string | ResponseInputMessage[];
++  input: string | ResponseInputMessage[] | ResponseInputItem[];
++  /** Set to send raw Responses API items in `input` (images, tool calls and tool results). */
++  structuredInput?: boolean;
++  /** Responses API function tools: `{ type: "function", name, description, parameters }`. */
++  tools?: Record<string, unknown>[];
++  reasoning?: { effort?: string };
++  promptCacheKey?: string;
+   instructions?: string;
+   signal?: AbortSignal;
+   onDelta?: (delta: string) => void;
+ }
+ 
++export interface StreamResponseResult {
++  text: string;
++  /** Completed output items (messages, function calls, ...) in order. */
++  output: Record<string, unknown>[];
++  usage?: ResponseUsage;
++}
++
+ export interface SignInOptions {
+   signal?: AbortSignal;
+   /** Register another account instead of reauthorizing the selected profile. */
+@@ -100,7 +121,7 @@ export interface ChatGPTClient {
+   subscribe(listener: (session: SessionState) => void): () => void;
+   /** Sign out of the selected profile. Its registration and identity remain saved. */
+   disconnect(): Promise<void>;
+-  streamResponse(options: StreamResponseOptions): Promise<{ text: string }>;
++  streamResponse(options: StreamResponseOptions): Promise<StreamResponseResult>;
+ }
+ 
+ export interface StoredCredentials {
