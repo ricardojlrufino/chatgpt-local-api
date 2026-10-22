@@ -13,7 +13,7 @@
   "scripts": {
     "build": "node build.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "node --test test/",
+    "test": "node --test \"test/*.test.mjs\"",
     "start": "npm run build && node dist/server.js",
     "login": "npm run build && node dist/server.js login",
     "sync-siwc": "node scripts/sync-siwc.mjs",

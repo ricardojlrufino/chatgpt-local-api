@@ -19,7 +19,7 @@ jobs:
           node-version: 22
       - run: bun install --frozen-lockfile
       - run: bunx tsc --noEmit
-      - run: node --test test/
+      - run: npm test
 
       - name: Compilar binários
         run: |
