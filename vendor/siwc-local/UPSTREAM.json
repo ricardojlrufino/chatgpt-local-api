@@ -1,8 +1,8 @@
 {
   "repo": "https://github.com/openai/sign-in-with-chatgpt-devkit",
-  "commit": "f723814abdccec135b519c451fb6e1992ee5e933",
-  "commitDate": "2026-09-29",
-  "subject": "Remove duplicate README button and composer caption",
+  "commit": "0a36fefeb913055c8c7a1a29b63d82b96b2e841a",
+  "commitDate": "2026-10-07T09:37:23-07:00",
+  "subject": "Use the OpenAI Node SDK for Responses streaming (#4)",
   "patched": true,
-  "note": "Cópia anterior ao sistema de sync: build do commit-base com as extensões locais (ferramentas, imagens, reasoning, promptCacheKey) aplicadas à mão em dist/."
+  "syncedAt": "2026-10-26T15:51:21.389Z"
 }
